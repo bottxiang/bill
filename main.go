@@ -20,29 +20,33 @@ type myCloser interface {
 type Bills struct {
 	TotalAmount float64
 	TotalItems int
-	AI map[string][]string //AmountAndItem: "filename": [amount, items]
+	TotalNetAmount float64
+	AI map[string][]string //AmountAndItem: "filename": [amount, netAmount, items]
 }
 
 var b Bills
 
 func (bs *Bills) cal() {
-	as, is := 0.0, 0
+	as, ns, is := 0.0, 0.0, 0
 
 	for _, item := range bs.AI {
 		a, _ := strconv.ParseFloat(item[0], 64)
-		i, _ := strconv.Atoi(item[1])
+		n, _ := strconv.ParseFloat(item[1], 64)
+		i, _ := strconv.Atoi(item[2])
 		as += a
+		ns += n
 		is += i
 	}
 	bs.TotalAmount = as
+	bs.TotalNetAmount = ns
 	bs.TotalItems = is
 }
 
 func (bs Bills) String() string {
 	bs.cal()
-	s := fmt.Sprintf("总金额：%f 订单数：%d\n", bs.TotalAmount, bs.TotalItems)
+	s := fmt.Sprintf("交易金额：%.2f \n已到账金额（扣除手续费）：%.2f\n已到账订单数：%d\n", bs.TotalAmount, bs.TotalNetAmount, bs.TotalItems)
 	for filename, item := range bs.AI {
-		s += fmt.Sprintf("%s, %s, %s\n", filename, item[0], item[1])
+		s += fmt.Sprintf("%s, %s, %s, %s\n", filename, item[0], item[1], item[2])
 		// a, _ := strconv.ParseFloat(item[0], 64)
 		// i, _ := strconv.Atoi(item[1])
 		// as += a
@@ -99,7 +103,7 @@ func readOrders(file *zip.File) (orders []string) {
 	return
 }
 
-func readAI(file *zip.File) (amount string, items string) {
+func readAI(file *zip.File) (amount string, netAmount string, items string) {
 	fc, err := file.Open()
 	check(err)
 	defer closeFile(fc)
@@ -120,9 +124,9 @@ func readAI(file *zip.File) (amount string, items string) {
 		if strings.HasPrefix(line, "总计") {
 			fields := strings.Fields(line)
 			if fields[2] != "0.00" {
-				fmt.Printf("%s 借：%s\n", file.Name, fields[2])
+				fmt.Printf("%s 退款：%s\n", file.Name, fields[2])
 			}
-			return fields[3], fields[1]
+			return fields[3], fields[7], fields[1]
 		}
 		// nu++
 		// line := scanner.Text()
@@ -134,11 +138,11 @@ func readAI(file *zip.File) (amount string, items string) {
 		// 	return fields[3], fields[1]
 		// }
 	}
-	return "0.0", "0"
+	return "0.0", "0.0", "0"
 }
 
 // read bills from zip file
-func readBillsFromZip(zipFile string) (orders []string, amount string, items string) {
+func readBillsFromZip(zipFile string) (orders []string, amount string, netAmount string, items string) {
 	zf, err := zip.OpenReader(zipFile)
 	check(err)
 	defer closeFile(zf)
@@ -151,9 +155,8 @@ func readBillsFromZip(zipFile string) (orders []string, amount string, items str
 		// 汇总
 		if strings.HasPrefix(file.Name, "RD") {
 			//TODO
-			amount, items = readAI(file)
+			amount, netAmount, items = readAI(file)
 		}
-
 	}
 	return
 }
@@ -164,28 +167,28 @@ func exportFolder(dir string, out string) {
 	orders := make([]string, 0)
 	for _, fi := range fis {
 		zipFile := dir + "/" + fi.Name()
-		o, a, i := readBillsFromZip(zipFile)
+		o, a, n, i := readBillsFromZip(zipFile)
 		//fmt.Println(fi.Name(), a, i, "=", len(o), o)
-		b.AI[fi.Name()] = []string{a, i}
-		//orders = append(orders, fi.Name())
+		b.AI[fi.Name()] = []string{a, n, i}
+		// orders = append(orders, fi.Name()) //文件名
 		orders = append(orders, o...)
 	}
 	write(orders, out)
 }
 
 func exportSingle(zipFile string, out string) {
-	o, a, i := readBillsFromZip(zipFile)
+	o, a, n, i := readBillsFromZip(zipFile)
 	//fmt.Println(zipFile, len(o), o)
-	b.AI[zipFile] = []string{a, i}
+	b.AI[zipFile] = []string{a, n, i}
 	write(o, out)
 }
 
 func init() {
 	b = Bills{AI: make(map[string][]string)}
 }
+
 func main() {
-	exportFolder("./zip_p", "jc0706.txt")
+	exportFolder("C:\\深圳分公司\\00_风险赔付\\东莞天安数码城2\\银联对账文件", "tt.txt")
 	fmt.Println(b)
-	// fmt.Println(strings.HasPrefix("总计 fdsf", "总计"))
-	// fmt.Println(strings.HasPrefix("fdsf", "fd"))
 }
+
